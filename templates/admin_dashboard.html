@@ -346,7 +346,11 @@
             color: white;
         }
 
-        /* Cleanup Section Styles */
+        .report-btn-graduated {
+            background: #28a745;
+            color: white;
+        }
+
         .cleanup-section {
             background: #fff3cd;
             margin: 0 24px 20px 24px;
@@ -382,7 +386,6 @@
             transform: none;
         }
 
-        /* Promotion Section Styles */
         .promotion-section {
             background: #d4edda;
             margin: 0 24px 20px 24px;
@@ -469,7 +472,6 @@
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
         <div class="header">
             <div>
                 <h1>{{ department.name }} Department</h1>
@@ -481,7 +483,6 @@
             </div>
         </div>
 
-        <!-- Alert Messages -->
         {% if session.upload_message %}
         <div class="alert alert-success">
             {{ session.upload_message }}
@@ -496,11 +497,14 @@
         </div>
         {% endif %}
 
-        <!-- Statistics Cards -->
         <div class="stats-container">
             <div class="stat-card">
                 <h3>{{ total_students }}</h3>
-                <p>Total Students</p>
+                <p>Active Students</p>
+            </div>
+            <div class="stat-card">
+                <h3>{{ total_graduated }}</h3>
+                <p>Graduated Students</p>
             </div>
             <div class="stat-card">
                 <h3>{{ total_staff }}</h3>
@@ -516,7 +520,6 @@
             </div>
         </div>
 
-        <!-- Bulk Upload Section -->
         <div class="upload-section">
             <h3>📤 Bulk Upload Students (Excel/CSV)</h3>
             <form action="{{ url_for('upload_students') }}" method="POST" enctype="multipart/form-data" class="upload-form">
@@ -536,7 +539,6 @@
             <small style="color: #666; display: block; margin-top: 10px;">File must have columns: name, register_number, gender, batch, dob, umis, mobile.student, mobile.parent, parents/gardian name, blood group</small>
         </div>
 
-        <!-- Classes Section -->
         <div class="section">
             <div class="section-title">
                 <h2>📚 Classes</h2>
@@ -584,7 +586,6 @@
             </div>
         </div>
 
-        <!-- Add Single Student -->
         <div class="add-student-section">
             <h3>➕ Add Single Student</h3>
             <form action="{{ url_for('add_student') }}" method="POST" class="add-student-form">
@@ -610,7 +611,7 @@
                 </select>
                 
                 <input type="text" name="batch" placeholder="Batch (e.g., 2024-2027)" required>
-                <input type="text" name="dob" placeholder="Date of Birth ">
+                <input type="text" name="dob" placeholder="Date of Birth (e.g., 24 July 2007)">
                 <input type="text" name="umis" placeholder="UMIS Number">
                 <input type="tel" name="mobile_student" placeholder="Student Mobile No">
                 <input type="tel" name="mobile_parent" placeholder="Parent Mobile No">
@@ -632,18 +633,18 @@
             </form>
         </div>
 
-        <!-- Cleanup Section - Clear All Attendance Data -->
+        <!-- Cleanup Section -->
         <div class="cleanup-section">
             <span style="color: #856404;">🧹 <strong>Clear All Attendance Data</strong> (Student details will remain)</span>
             <button onclick="clearAllAttendance()" class="cleanup-btn">🗑️ Clear All</button>
         </div>
         <div id="cleanupResult" style="margin: 0 24px 20px 24px; display: none; padding: 10px; border-radius: 8px; text-align: center;"></div>
 
-        <!-- Promotion Section - End of Year Student Promotion -->
+        <!-- Promotion Section -->
         <div class="promotion-section">
             <div>
                 <span style="color: #155724;">🎓 <strong>End of Year Promotion</strong></span>
-                <span style="color: #155724; font-size: 0.8em; margin-left: 10px;">1st Year → 2nd Year → 3rd Year (Graduates removed)</span>
+                <span style="color: #155724; font-size: 0.8em; margin-left: 10px;">1st Year → 2nd Year → 3rd Year (Graduates archived)</span>
             </div>
             <button onclick="promoteStudents()" class="promotion-btn">🎓 Promote Students</button>
         </div>
@@ -653,6 +654,7 @@
         <div class="report-buttons">
             <a href="{{ url_for('all_ec_activities') }}" class="report-btn report-btn-ec">📋 All EC Activities</a>
             <a href="{{ url_for('od_by_date') }}" class="report-btn report-btn-od">📅 View OD by Date</a>
+            <a href="{{ url_for('view_graduated_students') }}" class="report-btn report-btn-graduated">🎓 Graduated Students</a>
         </div>
     </div>
 
@@ -695,7 +697,6 @@
             }
         }
 
-        // Clear All Attendance Function
         function clearAllAttendance() {
             if (confirm('⚠️ WARNING: This will delete ALL attendance records!\n\nStudent details, staff data, and departments will NOT be affected.\n\nThis action cannot be undone. Are you sure?')) {
                 
@@ -751,13 +752,12 @@
             }
         }
 
-        // Promote Students Function
         function promoteStudents() {
             if (confirm('🎓 END OF YEAR PROMOTION\n\n' +
                         'This will:\n' +
                         '✓ Move 1st Year students → 2nd Year\n' +
                         '✓ Move 2nd Year students → 3rd Year\n' +
-                        '✓ Remove 3rd Year students (Graduated)\n\n' +
+                        '✓ Archive 3rd Year students (Graduated - data preserved)\n\n' +
                         '⚠️ This action cannot be undone!\n\n' +
                         'Are you sure you want to proceed?')) {
                 

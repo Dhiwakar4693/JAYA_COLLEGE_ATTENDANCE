@@ -6,38 +6,20 @@ from collections import defaultdict
 import pandas as pd
 import os
 from pathlib import Path
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 app = Flask(__name__)
 
 # ==================== PRODUCTION CONFIGURATION ====================
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
 
-# Database configuration - Supports PostgreSQL (production) and SQLite (development)
-database_url = os.environ.get('DATABASE_URL')
-
-if database_url:
-    # Production: Use PostgreSQL
-    if database_url.startswith('postgres://'):
-        database_url = database_url.replace('postgres://', 'postgresql://', 1)
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    print("✅ Using PostgreSQL database")
-else:
-    # Development: Use SQLite
-    instance_path = Path('instance')
-    instance_path.mkdir(exist_ok=True)
-    db_path = instance_path / 'attendance.db'
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path.absolute()}'
-    print("✅ Using SQLite database (development)")
+# Database configuration - Using SQLite only
+instance_path = Path('instance')
+instance_path.mkdir(exist_ok=True)
+db_path = instance_path / 'attendance.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path.absolute()}'
+print("✅ Using SQLite database")
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_pre_ping': True,
-    'pool_recycle': 300,
-}
 
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
@@ -75,6 +57,8 @@ class Student(db.Model):
     year = db.Column(db.String(20), nullable=False)
     section = db.Column(db.String(1), nullable=False)
     batch = db.Column(db.String(20))
+    status = db.Column(db.String(20), default='active')
+    graduation_year = db.Column(db.String(10))
     dob = db.Column(db.String(50))
     umis = db.Column(db.String(50))
     mobile_student = db.Column(db.String(15))
@@ -89,6 +73,7 @@ class Student(db.Model):
     __table_args__ = (
         db.Index('idx_student_department_year_section', 'department_id', 'year', 'section'),
         db.Index('idx_student_register_number', 'register_number'),
+        db.Index('idx_student_batch_status', 'batch', 'status'),
     )
 
 class Staff(db.Model):
@@ -183,6 +168,19 @@ class ClassSection(db.Model):
 with app.app_context():
     db.create_all()
     print("✅ Database tables created successfully!")
+    
+    # Add missing columns if they don't exist
+    try:
+        db.session.execute('ALTER TABLE students ADD COLUMN status VARCHAR(20) DEFAULT "active"')
+        print("✅ Added status column")
+    except:
+        pass
+    
+    try:
+        db.session.execute('ALTER TABLE students ADD COLUMN graduation_year VARCHAR(10)')
+        print("✅ Added graduation_year column")
+    except:
+        pass
     
     try:
         if not SystemConfig.query.filter_by(key='admin_password').first():
@@ -345,13 +343,15 @@ def admin_dashboard():
         session.clear()
         return redirect(url_for('index'))
     
-    total_students = Student.query.filter_by(department_id=session['department_id']).count()
+    total_students = Student.query.filter_by(department_id=session['department_id'], status='active').count()
     total_staff = StaffDepartment.query.filter_by(department_id=session['department_id']).count()
     total_activity_types = ActivityType.query.filter_by(department_id=session['department_id']).count()
     total_sections = ClassSection.query.filter_by(department_id=session['department_id']).count()
+    total_graduated = Student.query.filter_by(department_id=session['department_id'], status='graduated').count()
     
     students = Student.query.filter_by(
-        department_id=session['department_id']
+        department_id=session['department_id'],
+        status='active'
     ).order_by(
         Student.gender.desc(),
         Student.name.asc()
@@ -382,6 +382,7 @@ def admin_dashboard():
                          total_staff=total_staff,
                          total_activity_types=total_activity_types,
                          total_sections=total_sections,
+                         total_graduated=total_graduated,
                          sections_by_year=sections_by_year,
                          all_sections=all_sections,
                          available_sections=available_sections,
@@ -458,7 +459,8 @@ def login():
             Student.register_number == reg_no,
             Student.year == year,
             Student.section == section,
-            Student.department_id == department_id
+            Student.department_id == department_id,
+            Student.status == 'active'
         ).first()
         
         if student:
@@ -474,7 +476,10 @@ def login():
             departments = Department.query.all()
             student_by_reg = Student.query.filter_by(register_number=reg_no).first()
             if student_by_reg:
-                error_msg = f'Name mismatch. Found: "{student_by_reg.name}", You entered: "{name}"'
+                if student_by_reg.status == 'graduated':
+                    error_msg = f'{student_by_reg.name} has graduated. Cannot login.'
+                else:
+                    error_msg = f'Name mismatch. Found: "{student_by_reg.name}", You entered: "{name}"'
             else:
                 error_msg = 'Invalid student credentials. Please check your Register Number and Name.'
             return render_template('index.html', error=error_msg, departments=departments)
@@ -668,7 +673,7 @@ def delete_global_staff(staff_id):
 def delete_department(dept_id):
     department = Department.query.get_or_404(dept_id)
     
-    students_count = Student.query.filter_by(department_id=dept_id).count()
+    students_count = Student.query.filter_by(department_id=dept_id, status='active').count()
     if students_count > 0:
         all_departments = Department.query.all()
         dept_admins = {}
@@ -676,7 +681,7 @@ def delete_department(dept_id):
             admin = Staff.query.filter_by(admin_department_id=dept.id, is_department_admin=True).first()
             dept_admins[dept.id] = admin
         return render_template('add_new_department.html', 
-                             error=f'Cannot delete! {students_count} students are in this department. Delete or move them first.',
+                             error=f'Cannot delete! {students_count} active students are in this department. Delete or move them first.',
                              all_departments=all_departments,
                              dept_admins=dept_admins)
     
@@ -816,6 +821,8 @@ def get_student_full_details(student_id):
             'year': student.year,
             'section': student.section,
             'batch': student.batch,
+            'status': student.status,
+            'graduation_year': student.graduation_year,
             'dob': student.dob,
             'umis': student.umis,
             'mobile_student': student.mobile_student,
@@ -880,6 +887,35 @@ def edit_register_number(student_id):
                          year=year, 
                          section=section)
 
+@app.route('/view_graduated_students')
+def view_graduated_students():
+    role = session.get('role')
+    if role not in ['dept_admin', 'dept_admin_viewer']:
+        return redirect(url_for('index'))
+    
+    department_id = session.get('department_id')
+    
+    graduated_students = Student.query.filter_by(
+        department_id=department_id,
+        status='graduated'
+    ).order_by(Student.graduation_year.desc(), Student.name.asc()).all()
+    
+    batches = {}
+    for student in graduated_students:
+        # Use batch field instead of graduation_year for display
+        batch_key = student.batch if student.batch else student.graduation_year
+        if batch_key not in batches:
+            batches[batch_key] = {
+                'batch': batch_key,
+                'students': []
+            }
+        batches[batch_key]['students'].append(student)
+    
+    # Sort batches by batch year (newest first)
+    sorted_batches = sorted(batches.values(), key=lambda x: str(x['batch']), reverse=True)
+    
+    return render_template('graduated_students.html', batches=sorted_batches)
+
 # ==================== STAFF ROUTES ====================
 
 @app.route('/staff_dashboard')
@@ -903,7 +939,8 @@ def staff_dashboard():
     students = Student.query.filter_by(
         department_id=department_id,
         year=year, 
-        section=section
+        section=section,
+        status='active'
     ).order_by(
         Student.gender.desc(),
         Student.name.asc()
@@ -969,7 +1006,8 @@ def get_staff_dashboard_data():
         students = Student.query.filter_by(
             department_id=department_id,
             year=year,
-            section=section
+            section=section,
+            status='active'
         ).order_by(
             Student.gender.desc(),
             Student.name.asc()
@@ -1324,14 +1362,30 @@ def view_class(year, section):
     
     department_id = session.get('department_id')
     
-    students = Student.query.filter_by(
+    # Get batch filter from query parameter
+    batch_filter = request.args.get('batch', '')
+    
+    query = Student.query.filter_by(
         department_id=department_id,
         year=year, 
-        section=section
-    ).order_by(
+        section=section,
+        status='active'
+    )
+    
+    if batch_filter:
+        query = query.filter_by(batch=batch_filter)
+    
+    students = query.order_by(
         Student.gender.desc(),
         Student.name.asc()
     ).all()
+    
+    # Get unique batches for filter dropdown
+    batches = Student.query.filter_by(
+        department_id=department_id,
+        status='active'
+    ).with_entities(Student.batch).distinct().all()
+    batch_list = [b[0] for b in batches if b[0]]
     
     student_ids = [s.id for s in students]
     ec_activities = Extracurricular.query.filter(
@@ -1370,7 +1424,9 @@ def view_class(year, section):
     return render_template('class_view.html',
                          year=year,
                          section=section,
-                         students=summary)
+                         students=summary,
+                         batches=batch_list,
+                         selected_batch=batch_filter)
 
 @app.route('/print_attendance/<year>/<section>')
 def print_attendance(year, section):
@@ -1383,7 +1439,8 @@ def print_attendance(year, section):
     students = Student.query.filter_by(
         department_id=department_id,
         year=year, 
-        section=section
+        section=section,
+        status='active'
     ).order_by(
         Student.gender.desc(),
         Student.name.asc()
@@ -1717,7 +1774,8 @@ def monthly_attendance(year, section):
     students = Student.query.filter_by(
         department_id=department_id,
         year=year, 
-        section=section
+        section=section,
+        status='active'
     ).order_by(
         Student.gender.desc(),
         Student.name.asc()
@@ -1790,7 +1848,8 @@ def monthly_attendance_detail(year, section, month_key):
     students = Student.query.filter_by(
         department_id=department_id,
         year=year, 
-        section=section
+        section=section,
+        status='active'
     ).order_by(
         Student.gender.desc(),
         Student.name.asc()
@@ -2134,11 +2193,12 @@ def delete_section():
     students_count = Student.query.filter_by(
         department_id=section.department_id,
         year=section.year, 
-        section=section.section
+        section=section.section,
+        status='active'
     ).count()
     
     if students_count > 0:
-        return jsonify({'success': False, 'error': f'Cannot delete! {students_count} students are in this section. Move them first.'})
+        return jsonify({'success': False, 'error': f'Cannot delete! {students_count} active students are in this section. Move them first.'})
     
     db.session.delete(section)
     db.session.commit()
@@ -2184,6 +2244,7 @@ def add_student():
             year=year,
             section=section,
             batch=batch,
+            status='active',
             dob=dob,
             umis=umis,
             mobile_student=mobile_student,
@@ -2235,7 +2296,8 @@ def upload_students():
             existing_students = Student.query.filter_by(
                 department_id=department_id,
                 year=year, 
-                section=section
+                section=section,
+                status='active'
             ).all()
             existing_reg_numbers = [s.register_number for s in existing_students]
             
@@ -2270,6 +2332,7 @@ def upload_students():
                         year=year,
                         section=section,
                         batch=str(batch),
+                        status='active',
                         dob=dob,
                         umis=umis,
                         mobile_student=mobile_student,
@@ -2301,10 +2364,19 @@ def delete_student(student_id):
     year = student.year
     section = student.section
     
-    Attendance.query.filter_by(student_id=student_id).delete()
-    Extracurricular.query.filter_by(student_id=student_id).delete()
-    db.session.delete(student)
-    db.session.commit()
+    # Instead of deleting, mark as graduated if they are in 3rd year
+    if student.year == '3rd Year' and student.status == 'active':
+        student.status = 'graduated'
+        student.graduation_year = datetime.now().year
+        db.session.commit()
+        session['attendance_message'] = f'✅ Student {student.name} has been graduated!'
+    else:
+        # Delete only if not in 3rd year
+        Attendance.query.filter_by(student_id=student_id).delete()
+        Extracurricular.query.filter_by(student_id=student_id).delete()
+        db.session.delete(student)
+        db.session.commit()
+        session['attendance_message'] = f'✅ Student {student.name} deleted successfully!'
     
     return redirect(url_for('view_class', year=year, section=section))
 
@@ -2340,40 +2412,45 @@ def promote_students():
     
     try:
         # Get counts before promotion
-        first_year_count = Student.query.filter_by(department_id=department_id, year='1st Year').count()
-        second_year_count = Student.query.filter_by(department_id=department_id, year='2nd Year').count()
-        third_year_count = Student.query.filter_by(department_id=department_id, year='3rd Year').count()
+        first_year_count = Student.query.filter_by(department_id=department_id, year='1st Year', status='active').count()
+        second_year_count = Student.query.filter_by(department_id=department_id, year='2nd Year', status='active').count()
+        third_year_count = Student.query.filter_by(department_id=department_id, year='3rd Year', status='active').count()
         
-        # Step 1: Delete 3rd Year students (they graduate)
-        deleted_third_year = Student.query.filter_by(department_id=department_id, year='3rd Year').delete()
+        # Step 1: Archive 3rd Year students (mark as graduated, don't delete)
+        third_year_students = Student.query.filter_by(department_id=department_id, year='3rd Year', status='active').all()
+        for student in third_year_students:
+            student.status = 'graduated'
+            student.graduation_year = datetime.now().year
         
         # Step 2: Move 2nd Year to 3rd Year
-        second_year_students = Student.query.filter_by(department_id=department_id, year='2nd Year').all()
+        second_year_students = Student.query.filter_by(department_id=department_id, year='2nd Year', status='active').all()
         for student in second_year_students:
             student.year = '3rd Year'
         
         # Step 3: Move 1st Year to 2nd Year
-        first_year_students = Student.query.filter_by(department_id=department_id, year='1st Year').all()
+        first_year_students = Student.query.filter_by(department_id=department_id, year='1st Year', status='active').all()
         for student in first_year_students:
             student.year = '2nd Year'
         
         db.session.commit()
         
         # Get counts after promotion
-        new_first_year_count = Student.query.filter_by(department_id=department_id, year='1st Year').count()
-        new_second_year_count = Student.query.filter_by(department_id=department_id, year='2nd Year').count()
-        new_third_year_count = Student.query.filter_by(department_id=department_id, year='3rd Year').count()
+        new_first_year_count = Student.query.filter_by(department_id=department_id, year='1st Year', status='active').count()
+        new_second_year_count = Student.query.filter_by(department_id=department_id, year='2nd Year', status='active').count()
+        new_third_year_count = Student.query.filter_by(department_id=department_id, year='3rd Year', status='active').count()
+        archived_count = Student.query.filter_by(department_id=department_id, status='graduated').count()
         
         return jsonify({
             'success': True,
-            'message': f'✅ Promotion Complete!\n\n📊 Summary:\n• 3rd Year: {third_year_count} students graduated and removed\n• 2nd Year → 3rd Year: {second_year_count} students promoted\n• 1st Year → 2nd Year: {first_year_count} students promoted\n\n📋 Current Status:\n• 1st Year: {new_first_year_count} students\n• 2nd Year: {new_second_year_count} students\n• 3rd Year: {new_third_year_count} students',
+            'message': f'✅ Promotion Complete!\n\n📊 Summary:\n• 3rd Year: {third_year_count} students archived (graduated)\n• 2nd Year → 3rd Year: {second_year_count} students promoted\n• 1st Year → 2nd Year: {first_year_count} students promoted\n\n📋 Current Status:\n• 1st Year: {new_first_year_count} students\n• 2nd Year: {new_second_year_count} students\n• 3rd Year: {new_third_year_count} students\n• Graduated: {archived_count} students',
             'details': {
-                'deleted_third_year': deleted_third_year,
+                'archived_third_year': third_year_count,
                 'promoted_to_third': second_year_count,
                 'promoted_to_second': first_year_count,
                 'new_first_year': new_first_year_count,
                 'new_second_year': new_second_year_count,
-                'new_third_year': new_third_year_count
+                'new_third_year': new_third_year_count,
+                'total_graduated': archived_count
             }
         })
     except Exception as e:

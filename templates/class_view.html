@@ -51,6 +51,40 @@
             margin-bottom: 20px;
         }
 
+        .batch-filter {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .batch-filter select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+
+        .batch-filter button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .batch-filter a {
+            background: #6c757d;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+        }
+
         .stats-container {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -230,27 +264,6 @@
             text-align: center;
         }
 
-        .dropdown {
-            position: relative;
-            display: inline-block;
-        }
-
-        .dropbtn {
-            background: #667eea;
-            color: white;
-            padding: 6px 12px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.75em;
-            font-weight: 600;
-            transition: all 0.2s;
-        }
-
-        .dropbtn:hover {
-            background: #5a67d8;
-        }
-
         .dropdown-content {
             display: none;
             position: fixed;
@@ -416,10 +429,6 @@
                 font-size: 0.55em;
                 padding: 2px 6px;
             }
-            .dropbtn {
-                padding: 4px 8px;
-                font-size: 0.65em;
-            }
             .action-buttons {
                 flex-direction: column;
                 gap: 4px;
@@ -430,6 +439,13 @@
             .dropdown-content a {
                 padding: 8px 12px;
                 font-size: 0.75em;
+            }
+            .batch-filter {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .batch-filter button, .batch-filter a {
+                text-align: center;
             }
         }
     </style>
@@ -447,6 +463,23 @@
         <div class="class-header">
             <h2>Class Details</h2>
             <p>Year: {{ year }} | Section: {{ section }} | Total Students: {{ students|length }}</p>
+        </div>
+
+        <!-- Batch Filter -->
+        <div class="batch-filter">
+            <form method="GET" action="{{ url_for('view_class', year=year, section=section) }}" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <label style="font-weight: bold;">Filter by Batch:</label>
+                <select name="batch">
+                    <option value="">All Batches</option>
+                    {% for batch in batches %}
+                    <option value="{{ batch }}" {% if selected_batch == batch %}selected{% endif %}>{{ batch }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit">Filter</button>
+                {% if selected_batch %}
+                <a href="{{ url_for('view_class', year=year, section=section) }}">Clear Filter</a>
+                {% endif %}
+            </form>
         </div>
 
         <div class="stats-container">
@@ -503,8 +536,8 @@
                     </tr>
                     {% for student in male_students %}
                     <tr id="student-row-{{ student.id }}">
-                        <td>{{ sno.value }}{% set sno.value = sno.value + 1 %}</td>
-                        <td>{{ student.reg_no }}</td>
+                        <td>{{ sno.value }}{% set sno.value = sno.value + 1 %}</div>
+                        <td>{{ student.reg_no }}</div>
                         <td class="student-name">
                             <div class="student-info-cell">
                                 <div class="student-header">{{ student.name }}</div>
@@ -524,18 +557,18 @@
                                 {% endif %}
                                 <a href="{{ url_for('ec_activity', student_id=student.id, year=year, section=section) }}" class="ec-btn">➕ Add EC Activity</a>
                             </div>
-                        </td>
+                        </div>
                         <td>
                             <span class="gender-male">👨 Male</span>
-                        </td>
-                        <td>{{ student.batch }}</td>
-                        <td>{{ student.total_days }}</td>
-                        <td>{{ student.total_periods }}</td>
-                        <td class="present">{{ student.present_periods }}</td>
-                        <td class="absent">{{ student.absent_periods }}</td>
+                        </div>
+                        <td>{{ student.batch }}</div>
+                        <td>{{ student.total_days }}</div>
+                        <td>{{ student.total_periods }}</div>
+                        <td class="present">{{ student.present_periods }}</div>
+                        <td class="absent">{{ student.absent_periods }}</div>
                         <td class="percentage-cell {% if student.percentage >= 75 %}high{% elif student.percentage >= 40 %}medium{% else %}low{% endif %}">
                             <strong>{{ student.percentage }}%</strong>
-                        </td>
+                        </div>
                         <td>
                             {% if student.percentage >= 75 %}
                             <span style="color: #28a745;">✅ Good</span>
@@ -544,12 +577,12 @@
                             {% else %}
                             <span style="color: #dc3545;">❌ Low</span>
                             {% endif %}
-                        </td>
+                        </div>
                         <td>
                             <div class="action-buttons">
                                 <button class="action-icon" onclick="showActionMenu(this, '{{ student.id }}', '{{ student.name }}', '{{ year }}', '{{ section }}')" title="Actions">⚙️</button>
                             </div>
-                        </td>
+                        </div>
                     </tr>
                     {% endfor %}
                     {% endif %}
@@ -558,12 +591,12 @@
                     <tr class="group-header-female">
                         <td colspan="12" style="background: #f8d7da; color: #721c24; font-weight: bold;">
                             👩 FEMALE STUDENTS ({{ female_students|length }})
-                        </td>
+                        </div>
                     </tr>
                     {% for student in female_students %}
                     <tr id="student-row-{{ student.id }}">
-                        <td>{{ sno.value }}{% set sno.value = sno.value + 1 %}</td>
-                        <td>{{ student.reg_no }}</td>
+                        <td>{{ sno.value }}{% set sno.value = sno.value + 1 %}</div>
+                        <td>{{ student.reg_no }}</div>
                         <td class="student-name">
                             <div class="student-info-cell">
                                 <div class="student-header">{{ student.name }}</div>
@@ -583,18 +616,18 @@
                                 {% endif %}
                                 <a href="{{ url_for('ec_activity', student_id=student.id, year=year, section=section) }}" class="ec-btn">➕ Add EC Activity</a>
                             </div>
-                        </td>
+                        </div>
                         <td>
                             <span class="gender-female">👩 Female</span>
-                        </td>
-                        <td>{{ student.batch }}</td>
-                        <td>{{ student.total_days }}</td>
-                        <td>{{ student.total_periods }}</td>
-                        <td class="present">{{ student.present_periods }}</td>
-                        <td class="absent">{{ student.absent_periods }}</td>
+                        </div>
+                        <td>{{ student.batch }}</div>
+                        <td>{{ student.total_days }}</div>
+                        <td>{{ student.total_periods }}</div>
+                        <td class="present">{{ student.present_periods }}</div>
+                        <td class="absent">{{ student.absent_periods }}</div>
                         <td class="percentage-cell {% if student.percentage >= 75 %}high{% elif student.percentage >= 40 %}medium{% else %}low{% endif %}">
                             <strong>{{ student.percentage }}%</strong>
-                        </td>
+                        </div>
                         <td>
                             {% if student.percentage >= 75 %}
                             <span style="color: #28a745;">✅ Good</span>
@@ -603,12 +636,12 @@
                             {% else %}
                             <span style="color: #dc3545;">❌ Low</span>
                             {% endif %}
-                        </td>
+                        </div>
                         <td>
                             <div class="action-buttons">
                                 <button class="action-icon" onclick="showActionMenu(this, '{{ student.id }}', '{{ student.name }}', '{{ year }}', '{{ section }}')" title="Actions">⚙️</button>
                             </div>
-                        </td>
+                        </div>
                     </tr>
                     {% endfor %}
                     {% endif %}
@@ -672,7 +705,7 @@
             document.getElementById('actionAddPrevious').href = `/add_previous_attendance/${studentId}`;
             document.getElementById('actionDeleteStudent').onclick = function(e) {
                 e.preventDefault();
-                if (confirm(`Delete student ${studentName}? This cannot be undone!`)) {
+                if (confirm(`Delete student ${studentName}? This will graduate them if in 3rd year!`)) {
                     window.location.href = `/delete_student/${studentId}`;
                 }
                 actionMenu.style.display = 'none';
